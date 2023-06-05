@@ -77,9 +77,6 @@ async def reade_users_me(current_user : schema.User = Depends(get_current_user))
     return current_user
 
 
-
-
-
 @app.post("/users/")
 def create_user(
     user:schema.UserCreate, db: Session=Depends(get_db)
@@ -92,38 +89,29 @@ def create_user(
 @app.post("/files/")
 async def upload_file(file: UploadFile = File(...), db = Depends(get_db)):
     file_data = await file.read()
-    new_file = crud.create_file(db, name=file.filename, content_type=file.content_type, data=file_data)
-    return {"id": new_file.id, "name": new_file.name}
+    filename = file.filename
+    filepath = os.path.join('uploads', filename)
+    with open(filepath, 'wb') as f:
+        f.write(file_data)
+
+    new_file = crud.create_file(db, name=file.filename, content_type=file.content_type, data=file_data, size=len(file_data), path=filepath)
+
+    return {"id": new_file.id, "name": new_file.name,"content": new_file.content_type, "formatted_size": new_file.formatted_size, "path": new_file.path}
 
 @app.get("/files/{file_id}")
-async def read_file(file_id: int):
-    db= SessionLocal()
-    file = db.query(models.FileModel).filter(models.FileModel.id==file_id).first()
-    if not file:
-        raise HTTPException(status_code=404, detail="File not found")
-    return {"name": file.name, "content_type":file.content_type}
-
+async def read_file(file_id: int, db = Depends(get_db)):
+    return crud.get_file_data(db, file_id)
 
 @app.get("/allfiles/")
-def read_files(skip: int = 0, limit: int = 100, db :Session = Depends(get_db)):
-    files = db.query(models.FileModel.id,models.FileModel.name, models.FileModel.content_type).offset(skip).limit(limit).all()
-    return files
-
-
-
+def read_files(skip: int = 0, limit: int = 100, db = Depends(get_db)):
+    return crud.get_all_files(db, skip, limit)
 
 @app.delete("/files/{file_id}")
-def delete_file(file_id: int):
-    db = SessionLocal()
+def delete_file(file_id: int, db = Depends(get_db)):
     db_file = db.query(models.FileModel).filter(models.FileModel.id == file_id).first()
     if db_file is None:
         raise HTTPException(status_code=404, detail="File not found")
+    os.remove(db_file.path)
     db.delete(db_file)
     db.commit()
     return {"message": "File deleted successfully"}
-
-
-#@app.get("/items/", response_model=List[schema.Item])
-#def read_items_(skip:int=0, limit: int=100, db: Session=Depends(get_db)):
-#   items = crud.get_items(db, skip, limit=limit)
-#  return items

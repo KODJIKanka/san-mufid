@@ -25,4 +25,15 @@ class FileModel(Base):
     name = Column(String)
     content_type = Column(String)
     data = Column(BINARY)
-    
+    size = Column(Integer)
+    path = Column(String)
+
+
+    @property
+    def formatted_size(self):
+        if self.size < 1024:
+            return f"{self.size} octets"
+        elif self.size < 1024**2:
+            return f"{self.size/1024:.2f} Ko"
+        else:
+            return f"{self.size/1024**2:.2f} Mo"

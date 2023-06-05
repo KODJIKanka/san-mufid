@@ -6,7 +6,7 @@ from sqlalchemy.orm import sessionmaker
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import sessionmaker, Session
 import io
-from typing import List
+import os
 
 app = FastAPI()
 
@@ -20,7 +20,17 @@ class FileModel(Base):
     name = Column(String)
     content_type = Column(String)
     data = Column(BINARY)
-    #size = Column(Integer)
+    size = Column(Integer)
+    path = Column(String)
+
+    @property
+    def formatted_size(self):
+        if self.size < 1024:
+            return f"{self.size} octets"
+        elif self.size < 1024**2:
+            return f"{self.size/1024:.2f} Ko"
+        else:
+            return f"{self.size/1024**2:.2f} Mo"
 
 Base.metadata.create_all(bind=engine)
 
@@ -34,50 +44,53 @@ def get_db():
     finally:
         db.close()
 
-def create_file(db, name: str, content_type: str, data: bytes):
-    file = FileModel(name=name, content_type=content_type, data=data)
+def create_file(db, name: str, content_type: str, data: bytes, size: int, path: str):
+    file = FileModel(name=name, content_type=content_type, data=data, size=size, path=path)
     db.add(file)
     db.commit()
     db.refresh(file)
     return file
 
-#def get_file(db, file_id: int):
-#   return db.query(FileModel).filter(FileModel.id == file_id).first()
+def get_file_data(db, file_id: int):
+    file = db.query(FileModel).filter(FileModel.id==file_id).first()
+    if not file:
+        raise HTTPException(status_code=404, detail="File not found")
+    return {"name": file.name, "content_type": file.content_type, "formatted_size": file.formatted_size, "path": file.path}
 
-#def delete_file(db, file_id: int):
-#    db.query(FileModel).filter(FileModel.id == file_id).delete()
-#    db.commit()
+def get_all_files(db, skip: int, limit: int):
+    files = db.query(FileModel.id,FileModel.name, FileModel.content_type, FileModel.size, FileModel.path).offset(skip).limit(limit).all()
+    result = []
+    for file in files:
+        result.append({"id": file[0], "name": file[1], "content_type": file[2], "formatted_size": file.formatted_size, "path": file[4]})
+    return result
 
 # Endpoints de l'API
 @app.post("/files/")
 async def upload_file(file: UploadFile = File(...), db = Depends(get_db)):
     file_data = await file.read()
-    new_file = create_file(db, name=file.filename, content_type=file.content_type, data=file_data)
-    return {"id": new_file.id, "name": new_file.name}
+    filename = file.filename
+    filepath = os.path.join('uploads', filename)
+    with open(filepath, 'wb') as f:
+        f.write(file_data)
+
+    new_file = create_file(db, name=file.filename, content_type=file.content_type, data=file_data, size=len(file_data), path=filepath)
+
+    return {"id": new_file.id, "name": new_file.name,"content": new_file.content_type, "formatted_size": new_file.formatted_size, "path": new_file.path}
 
 @app.get("/files/{file_id}")
-async def read_file(file_id: int):
-    db= SessionLocal()
-    file = db.query(FileModel).filter(FileModel.id==file_id).first()
-    if not file:
-        raise HTTPException(status_code=404, detail="File not found")
-    return {"name": file.name, "content":file.content_type}
-
+async def read_file(file_id: int, db = Depends(get_db)):
+    return get_file_data(db, file_id)
 
 @app.get("/allfiles/")
-def read_files(skip: int = 0, limit: int = 100, db :Session = Depends(get_db)):
-    files = db.query(FileModel.id,FileModel.name, FileModel.content_type).offset(skip).limit(limit).all()
-    return files
-
-
-
+def read_files(skip: int = 0, limit: int = 100, db = Depends(get_db)):
+    return get_all_files(db, skip, limit)
 
 @app.delete("/files/{file_id}")
-def delete_file(file_id: int):
-    db = SessionLocal()
+def delete_file(file_id: int, db = Depends(get_db)):
     db_file = db.query(FileModel).filter(FileModel.id == file_id).first()
     if db_file is None:
         raise HTTPException(status_code=404, detail="File not found")
+    os.remove(db_file.path)
     db.delete(db_file)
     db.commit()
     return {"message": "File deleted successfully"}
