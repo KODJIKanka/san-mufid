@@ -93,10 +93,16 @@ async def upload_file(file: UploadFile = File(...), db = Depends(get_db)):
     filepath = os.path.join('uploads', filename)
     with open(filepath, 'wb') as f:
         f.write(file_data)
+    file_hash = crud.get_file_hash(filepath)
 
-    new_file = crud.create_file(db, name=file.filename, content_type=file.content_type, data=file_data, size=len(file_data), path=filepath)
+    existing_file = db.query(models.FileModel).filter(models.FileModel.hash == file_hash).first()
+    if existing_file:
+        raise HTTPException(status_code=409, detail="File already exists in the database")
 
-    return {"id": new_file.id, "name": new_file.name,"content": new_file.content_type, "formatted_size": new_file.formatted_size, "path": new_file.path}
+
+    new_file = crud.create_file(db, name=file.filename, content_type=file.content_type, data=file_data, size=len(file_data), path=filepath, hash= file_hash)
+
+    return {"id": new_file.id, "name": new_file.name,"content": new_file.content_type, "formatted_size": new_file.formatted_size, "path": new_file.path, "hash":new_file.hash}
 
 @app.get("/files/{file_id}")
 async def read_file(file_id: int, db = Depends(get_db)):

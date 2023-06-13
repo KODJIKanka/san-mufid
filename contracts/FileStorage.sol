@@ -2,13 +2,32 @@
 pragma solidity >=0.4.22 <0.9.0;
 
 contract FileStorage {
-  mapping (uint256 => string) public name;
-
-  function addFile(uint256 _id, string memory _name) public {
-    name[_id] = _name;
-  }
-
-  function getFile(uint256 _id) public view returns (string memory) {
-        return name[_id];
+    struct File {
+        string name;
+        bytes32 hash;
+    }
+    
+    File[] private files;
+    
+    function addFile(string memory _name, bytes32 _hash) public {
+        files.push(File(_name, _hash));
+    }
+    
+    function getFileHash(string memory _name) public view returns (bytes32) {
+        for (uint i = 0; i < files.length; i++) {
+            if (keccak256(bytes(files[i].name)) == keccak256(bytes(_name))) {
+                return files[i].hash;
+            }
+        }
+        revert("File not found");
+    }
+    
+    function getFile(string memory _name) public view returns (string memory, bytes32) {
+        for (uint i = 0; i < files.length; i++) {
+            if (keccak256(bytes(files[i].name)) == keccak256(bytes(_name))) {
+                return (files[i].name, files[i].hash);
+            }
+        }
+        revert("File not found");
     }
 }

@@ -16,8 +16,7 @@ class User(Base):
     username = Column(String, unique=True)
     hashed_password = Column(String)
     is_active = Column(Boolean, default = True)
-
-
+    
 # Définition de la table document
 class FileModel(Base):
     __tablename__ = "files"
@@ -27,6 +26,7 @@ class FileModel(Base):
     data = Column(BINARY)
     size = Column(Integer)
     path = Column(String)
+    hash = Column(String)
 
 
     @property
