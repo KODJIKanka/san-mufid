@@ -1,4 +1,4 @@
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, status, Depends
 from typing import Optional
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from passlib.context import CryptContext
@@ -35,6 +35,11 @@ def get_user(db, username:str):
     return db.query(models.User).filter(models.User.username==username).first()
 
 
+def get_user_by_id(db, id:int):
+    return db.query(models.User).filter(models.User.id==id).first()
+
+
+
 def authenticate_user(db, username: str, password:str):
     user = get_user(db,username)
     if not user:
@@ -45,25 +50,72 @@ def authenticate_user(db, username: str, password:str):
     return user
 
 
-def create_access_token(data:dict, expires_delta: Optional[timedelta] = None):
-    to_encode = data.copy()
-    if expires_delta:
-        expire = datetime.utcnow() + expires_delta
-    else:
-        expire = datetime.utcnow() + timedelta(minutes=15)
+def create_access_token(user):
+    try:
+        claims = {
+            "sub": user.username,
+            "role": user.role.value,
+            "active": user.is_active,
+            "exp": datetime.utcnow() + timedelta(minutes=120),
+        }
+        return jwt.encode(claims=claims, key=SECRET_KEY, algorithm=ALGORITHM)
+    except Exception as ex:
+        raise ex
 
-    to_encode.update({"exp":expire})
-    encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
-    return encoded_jwt
+
+def verify_token(token):
+    try:
+        payload = jwt.decode(token, key=SECRET_KEY)
+        return payload
+    except:
+        raise Exception("Wrong token")
+
+
+def check_active(token: str = Depends(oauth2_scheme)):
+    payload = verify_token(token)
+    active = payload.get("active")
+    if not active:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Please activate your Account first",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    else:
+        return payload
+
+
+def check_admin(payload: dict = Depends(check_active)):
+    role = payload.get("role")
+    if role != "admin":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only admins can access this route",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    else:
+        return payload
+    
+def get_users(db: Session):
+    return db.query(models.User).all()
+
 
 
 
 def create_user(db:Session, user:schema.UserCreate):
-    db_user = models.User(username=user.username, hashed_password=get_password_hash(user.password))
+    db_user = models.User(username=user.username, hashed_password = get_password_hash(user.password), role=user.role)
+    
     db.add(db_user)
     db.commit()
     db.refresh(db_user)
-    return db_user
+    return {"db_user" : db_user}
+
+def delete_user(db: Session, id: int):
+    user = db.query(models.User).filter(models.User.id == id).first()
+    if not user:
+        return None
+    db.delete(user)
+    db.commit()
+    return user
 
 @property
 def formatted_size(self):
@@ -83,6 +135,8 @@ def create_file(db, name: str, content_type: str, data: bytes, size: int, path :
     return file
 
 
+
+
 def get_file_data(db, file_id: int):
     file = db.query(models.FileModel).filter(models.FileModel.id==file_id).first()
     if not file:
@@ -93,9 +147,9 @@ def get_all_files(db, skip: int, limit: int):
     files = db.query(models.FileModel.id,models.FileModel.name, models.FileModel.content_type, models.FileModel.size , models.FileModel.path, models.FileModel.hash).offset(skip).limit(limit).all()
     result = []
     for file in files:
-        result.append({"id": file[0], "name": file[1], "content_type": file[2] , "size": file[3] , "path": file[4], "hash": file[5]})
+        formatted_size = models.FileModel(size=file[3]).formatted_size
+        result.append({"id": file[0], "name": file[1], "content_type": file[2] , "size": formatted_size , "path": file[4], "hash": file[5]})
     return result
-
 
 def get_file_hash(filepath: str):
     """Calculates the SHA-256 hash of a file"""

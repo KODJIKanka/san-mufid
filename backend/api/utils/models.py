@@ -1,7 +1,10 @@
-from sqlalchemy import Boolean, Column, Integer, String, DateTime, BINARY
+from sqlalchemy import Boolean, Column, Integer, String, DateTime, BINARY, ForeignKey, Enum
 import datetime
-
+from typing import Optional
+from sqlalchemy.orm import relationship
 from .sandb import Base
+from .schema import Roles
+
 
 
 
@@ -16,6 +19,8 @@ class User(Base):
     username = Column(String, unique=True)
     hashed_password = Column(String)
     is_active = Column(Boolean, default = True)
+    role = Column(Enum(Roles), default="user")
+    
     
 # Définition de la table document
 class FileModel(Base):
@@ -27,7 +32,8 @@ class FileModel(Base):
     size = Column(Integer)
     path = Column(String)
     hash = Column(String)
-
+    
+    
 
     @property
     def formatted_size(self):

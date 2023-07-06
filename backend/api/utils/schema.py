@@ -1,6 +1,11 @@
 from typing import Optional
 from pydantic import BaseModel
+from enum import Enum
 
+
+class Roles(Enum):
+    user = "user"
+    admin = "admin"
 
 class Token(BaseModel):
     access_token : str
@@ -11,16 +16,12 @@ class TokenData(BaseModel):
 
 class User(BaseModel):
     username: str
-    #is_active : Optional[bool]  = None
-
+    is_active : Optional[bool]  = None
+    
 class UserInDB(User):
     hashed_password : str
 
 class UserCreate(User):
     password : str
+    role: Roles = "user"
 
-
-# Modèle de données pour un document
-class Document(BaseModel):
-    id: int
-    title: str
