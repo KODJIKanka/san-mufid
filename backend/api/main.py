@@ -36,7 +36,7 @@ def get_db():
 ACCESS_TOKEN_EXPIRE_MINUTES = 30
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
 
-# Créer la route pour se connecter et obtenir un jeton d'accès
+
 
 
 async def get_current_user(db:Session = Depends(get_db) ,token:str = Depends(oauth2_scheme)):
